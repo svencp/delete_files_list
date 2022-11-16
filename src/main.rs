@@ -16,81 +16,122 @@ use std::env;
 use std::process::exit;
 use std::path::Path;
 use std::fs::*;
-use std::io::{self, prelude::*, BufReader};
+use std::io::{prelude::*, BufReader};
 
 
 
 
-pub const RELEASE: bool            = false;
-// pub const RELEASE: bool            = true;
 pub const VERSION: &str            = env!("CARGO_PKG_VERSION");
 
 
+
 fn main() {
-    let arguments: Vec<String>    = env::args().collect();
-    let mut line_counter = 0;
-    let mut success = 0;
-    let mut failed = 0;
+    let arguments: Vec<String> = env::args().collect();
+    let path:Option<&Path>;
+    let mut file_success = 0;
+    let mut file_failed = 0;
+    let mut folder_success = 0;
+    let mut folder_failed = 0;
 
-    // If no argument given
-    if arguments.len() < 2 {
-        let message = "No list file given!".to_string();
-        feedback(Feedback::Error, message);
-        exit(17);
-    }
-
-    // If file does not exist
-    let path = Path::new(&arguments[1]);
-    if ! path.exists() {
-        let message = "File (or path) does not exist!".to_string();
-        feedback(Feedback::Error, message);
-        exit(17);
-    }
-    
-    
-    // MAIN LOOP
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    
-    for line in reader.lines() {
-        line_counter += 1;
-        
-        if line.is_err() {
-            println!("Error in line {}",line_counter);
+    // Check on arguments
+    match arguments.len() {
+        // no arguments
+        1 => {
+            let mut message = "No list file given!".to_string();
+            feedback(Feedback::Error, message);
+            println!();
+            message = "something like:  delete_files /home/path/to/list.txt".to_string();
+            feedback(Feedback::Info, message);
             exit(17);
-
         }
+        2 => {
+            match arguments[1].as_str() {
+                "ver" | "-v" | "-ver" | "v" => {
+                    let message = format!("Version is {}",VERSION);
+                    feedback(Feedback::Info, message);
+                    exit(17);
+                }
+                _ => {
+                    // If file does not exist
+                    path = Some(Path::new(&arguments[1]));
+                    if ! path.unwrap().exists() {
+                        let message = "File (or path) does not exist!".to_string();
+                        feedback(Feedback::Error, message);
+                        exit(17);
+                    }
+                }
+            }
+        }
+        _ => {
+            let mut message = "Too many arguments (parameters) given!".to_string();
+            feedback(Feedback::Error, message);
+            println!();
+            message = "something like:  delete_files /home/path/to/list.txt".to_string();
+            feedback(Feedback::Info, message);
+            exit(17);
+        }
+    }
+   
+    let file = BufReader::new(File::open(path.unwrap()).unwrap());
+    let mut lines: Vec<_> = file.lines().map(|line| { line.unwrap() }).collect();
+    lines.reverse();
 
-        let res = delete_file(line.unwrap());
-        match res.is_ok() {
+    
+    // MAIN LOOP  -  DO ONLY FILES  
+    for line in lines.iter() {
+        match Path::new(&line).is_file() {
             true => {
-                success += 1;
+                let res = delete_file(line.to_string());
+                match res.is_ok() {
+                    true => {
+                        file_success += 1;
+                    }
+                    false => {
+                        println!("{}",res.err().unwrap());
+                        file_failed += 1;
+                    }
+                }
             }
             false => {
-                println!("{}",res.err().unwrap());
-                failed += 1;
+                continue;
             }
         }
+    }
+    
+    for folder in lines.iter() {
 
-
+        match Path::new(&folder).is_dir() {
+            true => {
+                let res = delete_folder(folder.to_string());
+                match res.is_ok() {
+                    true => {
+                        folder_success += 1;
+                    }
+                    false => {
+                        println!("{}",res.err().unwrap());
+                        folder_failed += 1;
+                    }
+                }
+            }
+            false => {
+                continue;
+            }
+        }
     }
 
-
-
-
-
-
-
-  
-
-
-
-
-
-    println!("{}",arguments[1]);
+    // Wrap up
+    println!("");
+    println!("Files Deleted:    {}",file_success);
+    println!("Failed deletions: {}",file_failed);
+    println!();
+    println!("Folders Deleted:  {}",folder_success);
+    println!("Failed deletions: {}",folder_failed);
+    println!();
+    println!("Done - {}",arguments[1]);
 }
 
 
+// ************************************************ Functions ***********************************************************
 // function to delete file coming in as string
 pub fn delete_file(str: String ) -> Result<(), String> {
 
@@ -104,9 +145,22 @@ pub fn delete_file(str: String ) -> Result<(), String> {
             return Err(message);
         }
     }
-
 }
 
+// function to delete folder coming in as string
+pub fn delete_folder(str: String ) -> Result<(), String> {
+
+    let deletion = remove_dir(str.clone());
+    match deletion.is_ok() {
+        true => {
+            Ok(())
+        }
+        false => {
+            let message: String = format!("Folder: {} was not deleted!", str.clone());
+            return Err(message);
+        }
+    }
+}
 
 
 
